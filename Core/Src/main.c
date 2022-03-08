@@ -19,13 +19,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "usb_device.h"
+#include "queue.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "jk_bms_485.h"
 #include "jk_bms_pylon.h"
 
-//#define	__ENABLE_CONSOLE_DEBUG__	1
+#define	__ENABLE_CONSOLE_DEBUG__	1
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -71,6 +73,18 @@ const osThreadAttr_t every10msTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for consoleOutputTa */
+osThreadId_t consoleOutputTaHandle;
+const osThreadAttr_t consoleOutputTa_attributes = {
+  .name = "consoleOutputTa",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for consoleOutputQueue */
+osMessageQueueId_t consoleOutputQueueHandle;
+const osMessageQueueAttr_t consoleOutputQueue_attributes = {
+  .name = "consoleOutputQueue"
+};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -83,6 +97,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 void startGetBMSDataTask(void *argument);
 void startEvery10msTask(void *argument);
+void startConsoleOutputTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -90,6 +105,8 @@ void startEvery10msTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint8_t				USB_Console_TX_Buffer[256];
+uint8_t				USB_Console_TX_Buffer_Count = 0;
 uint8_t             UART_Rx_Buffer[1024];
 uint16_t			UART_Rx_Size;
 uint16_t			UART_Rx_Current_Size;
@@ -146,6 +163,10 @@ int main(void)
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of consoleOutputQueue */
+  consoleOutputQueueHandle = osMessageQueueNew (1024, sizeof(uint8_t), &consoleOutputQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -156,6 +177,9 @@ int main(void)
 
   /* creation of every10msTask */
   every10msTaskHandle = osThreadNew(startEvery10msTask, NULL, &every10msTask_attributes);
+
+  /* creation of consoleOutputTa */
+  consoleOutputTaHandle = osThreadNew(startConsoleOutputTask, NULL, &consoleOutputTa_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -201,9 +225,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 192;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV6;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
+  RCC_OscInitStruct.PLL.PLLN = 72;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 3;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -214,7 +238,7 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
@@ -239,11 +263,11 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 2;
+  hcan1.Init.Prescaler = 4;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_10TQ;
-  hcan1.Init.TimeSeg2 = CAN_BS2_5TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_9TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_8TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
   hcan1.Init.AutoWakeUp = DISABLE;
@@ -361,7 +385,15 @@ static void MX_GPIO_Init(void)
 #ifdef __ENABLE_CONSOLE_DEBUG__
 PUTCHAR_PROTOTYPE
 {
-	HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
+	//HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
+	USB_Console_TX_Buffer[USB_Console_TX_Buffer_Count] = ch;
+	USB_Console_TX_Buffer_Count += 1;
+	if (USB_Console_TX_Buffer_Count > 128) {
+		CDC_Transmit_FS(USB_Console_TX_Buffer, USB_Console_TX_Buffer_Count);
+		USB_Console_TX_Buffer_Count = 0;
+	}
+	//xQueueSend(consoleOutputQueueHandle, (void *)&ch, 1);
+	//HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
 	return ch;
 }
 #endif /* __ENABLE_CONSOLE_DEBUG__ */
@@ -388,6 +420,8 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size) {
 /* USER CODE END Header_startGetBMSDataTask */
 void startGetBMSDataTask(void *argument)
 {
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
 
 	/* Infinite loop */
@@ -397,7 +431,7 @@ void startGetBMSDataTask(void *argument)
 		  UART_Rx_Size = 0;
 		  HAL_UARTEx_ReceiveToIdle_IT(&huart1, UART_Rx_Buffer, 350);
 		  Request_JK_Battery_485_Status_Frame(huart1);
-		  HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
+		  //HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
 	  }
 	  osDelay(1000);
   }
@@ -439,6 +473,32 @@ void startEvery10msTask(void *argument)
 	  osDelay(100);
   }
   /* USER CODE END startEvery10msTask */
+}
+
+/* USER CODE BEGIN Header_startConsoleOutputTask */
+/**
+* @brief Function implementing the consoleOutputTa thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_startConsoleOutputTask */
+void startConsoleOutputTask(void *argument)
+{
+  /* USER CODE BEGIN startConsoleOutputTask */
+  /* Infinite loop */
+	uint8_t count = 0;
+	for(;;)
+	{
+		count = USB_Console_TX_Buffer_Count;
+		osDelay(200);
+		taskENTER_CRITICAL();
+		if (count > 0 && USB_Console_TX_Buffer_Count == count) {
+			CDC_Transmit_FS(USB_Console_TX_Buffer, USB_Console_TX_Buffer_Count);
+			USB_Console_TX_Buffer_Count = 0;
+		}
+		taskEXIT_CRITICAL();
+	}
+  /* USER CODE END startConsoleOutputTask */
 }
 
 /**
