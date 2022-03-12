@@ -20,12 +20,15 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "usb_device.h"
-#include "queue.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "jk_bms_485.h"
 #include "jk_bms_pylon.h"
+
+#include "ILI9341_GFX.h"
+#include "ILI9341_STM32_Driver.h"
+
 
 #define	__ENABLE_CONSOLE_DEBUG__	1
 /* USER CODE END Includes */
@@ -55,6 +58,8 @@ set to 'Yes') calls __io_putchar() */
 
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan1;
+
+SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -95,6 +100,7 @@ static void MX_GPIO_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SPI2_Init(void);
 void startGetBMSDataTask(void *argument);
 void startEvery10msTask(void *argument);
 void startConsoleOutputTask(void *argument);
@@ -111,6 +117,7 @@ uint8_t             UART_Rx_Buffer[1024];
 uint16_t			UART_Rx_Size;
 uint16_t			UART_Rx_Current_Size;
 
+uint8_t				dataReady;
 /* USER CODE END 0 */
 
 /**
@@ -144,6 +151,7 @@ int main(void)
   MX_CAN1_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -165,7 +173,7 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of consoleOutputQueue */
-  consoleOutputQueueHandle = osMessageQueueNew (1024, sizeof(uint8_t), &consoleOutputQueue_attributes);
+  consoleOutputQueueHandle = osMessageQueueNew (32, sizeof(uint8_t), &consoleOutputQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -187,6 +195,11 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
+  ILI9341_Init();
+  ILI9341_Fill_Screen(BLACK);
+  ILI9341_Set_Rotation(SCREEN_HORIZONTAL_2);
+  //ILI9341_Init();
+  //ILI9341_FillScreen(ILI9341_BLACK);
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
@@ -288,6 +301,45 @@ static void MX_CAN1_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+  lcd_spi = hspi2;
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -365,11 +417,18 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_D2_GPIO_Port, LED_D2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(TFT_DC_GPIO_Port, TFT_DC_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, TFT_RST_Pin|TFT_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : LED_D2_Pin */
   GPIO_InitStruct.Pin = LED_D2_Pin;
@@ -377,6 +436,20 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_D2_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : TFT_DC_Pin */
+  GPIO_InitStruct.Pin = TFT_DC_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(TFT_DC_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : TFT_RST_Pin TFT_CS_Pin */
+  GPIO_InitStruct.Pin = TFT_RST_Pin|TFT_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
 
@@ -409,6 +482,54 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size) {
 	}
 }
 
+void updateLCD() {
+	char str[32];
+	uint16_t voltage = jk_bms_battery_info.battery_status.battery_voltage;
+	//sprintf(str, "V: %d.%02d SOC %d%%",(int)(voltage/100), (int)(voltage%100), jk_bms_battery_info.battery_status.battery_soc);
+	//sprintf(str, "V: %d.%02d",(int)(voltage/100), (int)(voltage%100));
+	sprintf(str, "V: %d.%02d",(int)(voltage/100), jk_bms_battery_info.battery_status.battery_soc);
+	//ILI9341_WriteString(0, 1*16+1*26, str, Font_16x26, ILI9341_BLUE, ILI9341_BLACK);
+	//ILI9341_WriteString(0, 2*16+2*26, str, Font_16x26, ILI9341_RED, ILI9341_BLACK);
+	//ILI9341_WriteString(0, 3*16+3*26, str, Font_16x26, ILI9341_GREEN, ILI9341_BLACK);
+	//ILI9341_WriteString(0, 4*16+4*26, str, Font_16x26, ILI9341_YELLOW, ILI9341_BLACK);
+
+
+	ILI9341_Draw_Text(str, 35, 15, ORANGE, Font_34x36, BLACK);
+	ILI9341_Draw_Text(str, 35, 45, RED, Font_34x36, BLACK);
+	ILI9341_Draw_Text("V: 62.67", 35, 90, GREEN, Font_34x36, BLACK);
+
+	jk_bms_battery_info.battery_status.battery_soc = 15;
+
+	uint8_t val = 239 * (1 - jk_bms_battery_info.battery_status.battery_soc/100.0);
+
+	ILI9341_Draw_Filled_Rectangle_Coord(0, 0, 30, val, WHITE);
+	if (jk_bms_battery_info.battery_status.battery_soc > 60) {
+		ILI9341_Draw_Filled_Rectangle_Coord(0, val, 30, 239, GREEN);
+	} else if (jk_bms_battery_info.battery_status.battery_soc > 30) {
+		ILI9341_Draw_Filled_Rectangle_Coord(0, val, 30, 239, ORANGE);
+	} else {
+		ILI9341_Draw_Filled_Rectangle_Coord(0, val, 30, 239, RED);
+	}
+
+
+
+
+	//str[16] = 0;
+	//str[0] = 'A';
+	//str[1] = 'B';
+	//str[2] = 'C';
+	//str[3] = 0;
+	//Lcd_cursor(&lcd, 0,0);
+	//Lcd_string(&lcd, "ABCDRT");
+	//HAL_GPIO_WritePin(LED_D2_GPIO_Port, LED_D2_Pin, GPIO_PIN_SET);
+
+	//uint16_t current = jk_bms_battery_info.battery_status.battery_current;
+	//sprintf(str, "Discharge %3d.%02d",(int)(current/100), (int)(current%100));
+	//Lcd_cursor(&lcd, 1,0);
+	//str[16] = 0;
+	//Lcd_string(&lcd, str);
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_startGetBMSDataTask */
@@ -423,16 +544,20 @@ void startGetBMSDataTask(void *argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
-
 	/* Infinite loop */
   for(;;)
   {
+	  if (dataReady == 1) {
+		  updateLCD();
+		  dataReady = 0;
+	  }
 	  if (UART_Rx_Current_Size == 0) {
 		  UART_Rx_Size = 0;
 		  HAL_UARTEx_ReceiveToIdle_IT(&huart1, UART_Rx_Buffer, 350);
 		  Request_JK_Battery_485_Status_Frame(huart1);
 		  //HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
 	  }
+
 	  osDelay(1000);
   }
   /* USER CODE END 5 */
@@ -468,7 +593,7 @@ void startEvery10msTask(void *argument)
 		  }
 		  Tx_JK_BMS_Status_via_CAN(hcan1);
 		  UART_Rx_Current_Size = 0;
-
+		  dataReady = 1;
 	  }
 	  osDelay(100);
   }

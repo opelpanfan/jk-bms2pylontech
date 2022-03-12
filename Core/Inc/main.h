@@ -41,7 +41,7 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+SPI_HandleTypeDef lcd_spi;
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -59,7 +59,15 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define LED_D2_Pin GPIO_PIN_1
 #define LED_D2_GPIO_Port GPIOA
+#define TFT_DC_Pin GPIO_PIN_5
+#define TFT_DC_GPIO_Port GPIOC
+#define TFT_RST_Pin GPIO_PIN_1
+#define TFT_RST_GPIO_Port GPIOB
+#define TFT_CS_Pin GPIO_PIN_12
+#define TFT_CS_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
+#define LCD_BL_Pin GPIO_PIN_12
+#define LCD_BL_GPIO_Port GPIOB
 
 /* USER CODE END Private defines */
 

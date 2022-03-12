@@ -22,7 +22,7 @@ void TX_CAN_Message(CAN_HandleTypeDef hcan) {
 	if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
 		//printf("TX error: %ld\r\n", TxHeader.StdId);
 	}
-	HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
+	//HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
 	//waiting for message to leave
 	while(HAL_CAN_IsTxMessagePending(&hcan, TxMailbox)) {}
 	//HAL_GPIO_WritePin(LED_D2_GPIO_Port, LED_D2_Pin, GPIO_PIN_RESET);
