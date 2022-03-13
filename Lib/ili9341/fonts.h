@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 typedef struct {
+	uint8_t start_char;
 	uint8_t offset;
     uint8_t width;
     uint8_t height;
@@ -22,4 +23,7 @@ typedef struct {
 extern FontDef Font_8x12;
 extern FontDef Font_10x13;
 extern FontDef Font_34x36;
+extern FontDef Font_37x47;
+extern FontDef Font_26_B;
+
 #endif /* FONTS_H_ */

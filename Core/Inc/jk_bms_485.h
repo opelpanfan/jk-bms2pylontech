@@ -47,7 +47,7 @@ struct jk_bms_battery_status {
 	int8_t sensor_temperature_2;
 	int8_t temperature_sensor_count;
 	uint16_t battery_voltage;
-	uint16_t battery_current;
+	int16_t battery_current;
 	uint8_t battery_soc;
 	uint16_t battery_cycles;
 	uint32_t battery_cycle_capacity;

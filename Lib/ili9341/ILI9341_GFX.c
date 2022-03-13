@@ -172,7 +172,7 @@ void ILI9341_Draw_Hollow_Rectangle_Coord(uint16_t X0, uint16_t Y0, uint16_t X1, 
 	
 }
 
-/*Draw a filled rectangle between positions X0,Y0 and X1,Y1 with specified colour*/
+/*Draw a filled rectangle between positions X0,Y0 and X1,Y1 th specified colour*/
 void ILI9341_Draw_Filled_Rectangle_Coord(uint16_t X0, uint16_t Y0, uint16_t X1, uint16_t Y1, uint16_t Colour)
 {
 	uint16_t 	X_length = 0;
@@ -222,7 +222,7 @@ void ILI9341_Draw_Filled_Rectangle_Coord(uint16_t X0, uint16_t Y0, uint16_t X1, 
 /*Draws a character (fonts imported from fonts.h) at X,Y location with specified font colour, size and Background colour*/
 /*See fonts.h implementation of font on what is required for changing to a different font when switching fonts libraries*/
 //void ILI9341_DrawChar(char ch, const FontDef font, uint16_t X, uint16_t Y, uint16_t Colour, uint16_t Background_Colour)
-void ILI9341_Draw_Char(char ch, uint8_t X, uint8_t Y, uint16_t Colour, FontDef font, uint16_t Background_Colour)
+void ILI9341_Draw_Char(char ch, uint16_t X, uint16_t Y, uint16_t Colour, FontDef font, uint16_t Background_Colour)
 {
 	if ((ch < 31) || (ch > 127)) return;
 
@@ -235,7 +235,7 @@ void ILI9341_Draw_Char(char ch, uint8_t X, uint8_t Y, uint16_t Colour, FontDef f
 	fHeight = font.height;
 	fBPL = font.bpl;
 
-	tempChar = (uint8_t*)&font.data[((ch - 0x20) * fOffset)]; /* Current Character = Meta + (Character Index * Offset) */
+	tempChar = (uint8_t*)&font.data[((ch - font.start_char) * fOffset)]; /* Current Character = Meta + (Character Index * Offset) */
 
 	/* Clear background first */
 	ILI9341_Draw_Rectangle(X, Y, fWidth, fHeight, Background_Colour);
@@ -249,7 +249,6 @@ void ILI9341_Draw_Char(char ch, uint8_t X, uint8_t Y, uint16_t Colour, FontDef f
 			if (( z & b ) != 0x00)
 			{
 				ILI9341_Draw_Pixel(X+i, Y+j, Colour);
-
 			}
 		}
 	}
@@ -294,11 +293,19 @@ void ILI9341_Draw_Char(char Character, uint8_t X, uint8_t Y, uint16_t Colour, Fo
 
 /*Draws an array of characters (fonts imported from fonts.h) at X,Y location with specified font colour, size and Background colour*/
 /*See fonts.h implementation of font on what is required for changing to a different font when switching fonts libraries*/
-void ILI9341_Draw_Text(const char* Text, uint8_t X, uint8_t Y, uint16_t Colour, FontDef font, uint16_t Background_Colour)
+void ILI9341_Draw_Text(const char* Text, uint16_t X, uint16_t Y, uint16_t Colour, FontDef font, uint16_t Background_Colour)
 {
     while (*Text) {
         ILI9341_Draw_Char(*Text++, X, Y, Colour, font, Background_Colour);
-        X += (font.width * 0.7);/*font.width/**Size*/;
+        X += font.width;/*font.width/**Size*/;
+    }
+}
+
+void ILI9341_Draw_Text_Space(const char* Text, uint16_t X, uint16_t Y, uint16_t Colour, FontDef font, uint16_t Background_Colour, uint8_t Space)
+{
+    while (*Text) {
+        ILI9341_Draw_Char(*Text++, X, Y, Colour, font, Background_Colour);
+        X += Space;
     }
 }
 

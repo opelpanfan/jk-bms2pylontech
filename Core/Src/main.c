@@ -118,6 +118,9 @@ uint16_t			UART_Rx_Size;
 uint16_t			UART_Rx_Current_Size;
 
 uint8_t				dataReady;
+uint8_t				lcd_soc;
+uint16_t			lcd_alarms = 523;
+uint16_t			lcd_temp;
 /* USER CODE END 0 */
 
 /**
@@ -196,7 +199,7 @@ int main(void)
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
   ILI9341_Init();
-  ILI9341_Fill_Screen(BLACK);
+  ILI9341_Fill_Screen(WHITE);
   ILI9341_Set_Rotation(SCREEN_HORIZONTAL_2);
   //ILI9341_Init();
   //ILI9341_FillScreen(ILI9341_BLACK);
@@ -323,7 +326,7 @@ static void MX_SPI2_Init(void)
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -482,52 +485,143 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size) {
 	}
 }
 
-void updateLCD() {
+void drawBattery(uint8_t soc) {
+	if (lcd_soc != soc) {
+		uint8_t x = 5;
+		uint8_t yStart = 10;
+
+		uint8_t width = 60;
+		uint8_t step_height = 25;
+
+		ILI9341_Draw_Filled_Rectangle_Coord(x + width/2 - 10, yStart, x + width/2 + 10, yStart - 5, BLACK);
+		ILI9341_Draw_Filled_Rectangle_Coord(x, yStart, x + width, yStart + step_height * 5, BLACK);
+
+		uint16_t state_color = GREEN;
+		if (soc < 40) {
+			state_color = ORANGE;
+		}
+		if (soc < 20) {
+			state_color = RED;
+		}
+
+		for (int j=0; j<5; j++) {
+			uint8_t current_soc = 20 * j;
+			uint8_t i = 5 - j;
+			if (soc > current_soc) {
+				ILI9341_Draw_Filled_Rectangle_Coord(x + 4, yStart + step_height * (i - 1) + 4, x + width - 4, yStart + step_height * i - 4 , state_color);
+			}
+		}
+		lcd_soc = soc;
+	}
+}
+
+void drawVoltage_Current() {
 	char str[32];
 	uint16_t voltage = jk_bms_battery_info.battery_status.battery_voltage;
-	//sprintf(str, "V: %d.%02d SOC %d%%",(int)(voltage/100), (int)(voltage%100), jk_bms_battery_info.battery_status.battery_soc);
-	//sprintf(str, "V: %d.%02d",(int)(voltage/100), (int)(voltage%100));
-	sprintf(str, "V: %d.%02d",(int)(voltage/100), jk_bms_battery_info.battery_status.battery_soc);
-	//ILI9341_WriteString(0, 1*16+1*26, str, Font_16x26, ILI9341_BLUE, ILI9341_BLACK);
-	//ILI9341_WriteString(0, 2*16+2*26, str, Font_16x26, ILI9341_RED, ILI9341_BLACK);
-	//ILI9341_WriteString(0, 3*16+3*26, str, Font_16x26, ILI9341_GREEN, ILI9341_BLACK);
-	//ILI9341_WriteString(0, 4*16+4*26, str, Font_16x26, ILI9341_YELLOW, ILI9341_BLACK);
-
-
-	ILI9341_Draw_Text(str, 35, 15, ORANGE, Font_34x36, BLACK);
-	ILI9341_Draw_Text(str, 35, 45, RED, Font_34x36, BLACK);
-	ILI9341_Draw_Text("V: 62.67", 35, 90, GREEN, Font_34x36, BLACK);
-
-	jk_bms_battery_info.battery_status.battery_soc = 15;
-
-	uint8_t val = 239 * (1 - jk_bms_battery_info.battery_status.battery_soc/100.0);
-
-	ILI9341_Draw_Filled_Rectangle_Coord(0, 0, 30, val, WHITE);
-	if (jk_bms_battery_info.battery_status.battery_soc > 60) {
-		ILI9341_Draw_Filled_Rectangle_Coord(0, val, 30, 239, GREEN);
-	} else if (jk_bms_battery_info.battery_status.battery_soc > 30) {
-		ILI9341_Draw_Filled_Rectangle_Coord(0, val, 30, 239, ORANGE);
+	int16_t current = jk_bms_battery_info.battery_status.battery_current;
+	if (current > 0) {
+		// charging
+		ILI9341_Draw_Text_Space("<", 65, 18, BLACK, Font_26_B, WHITE, 15);
+		ILI9341_Draw_Filled_Rectangle_Coord(70, 32, 105, 37, BLACK);
 	} else {
-		ILI9341_Draw_Filled_Rectangle_Coord(0, val, 30, 239, RED);
+		// discharging
+		ILI9341_Draw_Text_Space(">", 85, 18, BLACK, Font_26_B, WHITE, 15);
+		ILI9341_Draw_Filled_Rectangle_Coord(70, 32, 105, 37, BLACK);
 	}
 
 
+	sprintf(str, "%d", (int)(voltage/100));
+	ILI9341_Draw_Text(str, 112, 10, DARKCYAN, Font_37x47, WHITE);
+	ILI9341_Draw_Text(".", 190, 26, DARKCYAN, Font_34x36, WHITE);
+	sprintf(str, "%02d", (int)(voltage%100));
+	ILI9341_Draw_Text(str, 200, 10, DARKCYAN, Font_37x47, WHITE);
+
+	ILI9341_Draw_Text("V", 275, 26, DARKCYAN, Font_34x36, WHITE);
 
 
-	//str[16] = 0;
-	//str[0] = 'A';
-	//str[1] = 'B';
-	//str[2] = 'C';
-	//str[3] = 0;
-	//Lcd_cursor(&lcd, 0,0);
-	//Lcd_string(&lcd, "ABCDRT");
-	//HAL_GPIO_WritePin(LED_D2_GPIO_Port, LED_D2_Pin, GPIO_PIN_SET);
+	sprintf(str, "%03d", (int)(current/100));
 
-	//uint16_t current = jk_bms_battery_info.battery_status.battery_current;
-	//sprintf(str, "Discharge %3d.%02d",(int)(current/100), (int)(current%100));
-	//Lcd_cursor(&lcd, 1,0);
-	//str[16] = 0;
-	//Lcd_string(&lcd, str);
+	ILI9341_Draw_Text(str, 75, 70, DARKCYAN, Font_37x47, WHITE);
+	ILI9341_Draw_Text(".", 190, 86, DARKCYAN, Font_34x36, WHITE);
+	sprintf(str, "%02d", (int)(current%100));
+	ILI9341_Draw_Text(str, 200, 70, DARKCYAN, Font_37x47, WHITE);
+	ILI9341_Draw_Text("A", 275, 86, DARKCYAN, Font_34x36, WHITE);
+
+}
+
+void drawTemperature() {
+	char str[32];
+	sprintf(str, "%03dC", jk_bms_battery_info.battery_status.sensor_temperature_1);
+	ILI9341_Draw_Text_Space(str, 80, 120, MAROON, Font_26_B, WHITE, 25);
+
+	sprintf(str, "%03dC", jk_bms_battery_info.battery_status.sensor_temperature_2);
+	ILI9341_Draw_Text_Space(str, 200, 120, MAROON, Font_26_B, WHITE, 25);
+}
+
+void drawAlarms() {
+	uint16_t color = LIGHTGREY;
+
+	if (jk_bms_battery_info.battery_alarms.charging_overvoltage) {
+		color = RED;
+	} else {
+		color = LIGHTGREY;
+	}
+	ILI9341_Draw_Text_Space("COVT", 5, 200, color, Font_26_B, WHITE, 25);
+
+	if (jk_bms_battery_info.battery_alarms.discharging_undervoltage) {
+		color = RED;
+	} else {
+		color = LIGHTGREY;
+	}
+	ILI9341_Draw_Text_Space("DUVT", 110, 200, color, Font_26_B, WHITE, 25);
+
+	if (jk_bms_battery_info.battery_alarms.low_capacity) {
+		color = RED;
+	} else {
+		color = LIGHTGREY;
+	}
+	ILI9341_Draw_Text_Space("LCAP", 215, 200, color, Font_26_B, WHITE, 25);
+
+	if (jk_bms_battery_info.battery_alarms.charging_overcurrent) {
+		color = RED;
+	} else {
+		color = LIGHTGREY;
+	}
+	ILI9341_Draw_Text_Space("COVC", 5, 160, color, Font_26_B, WHITE, 25);
+
+	if (jk_bms_battery_info.battery_alarms.discharging_overcurrent) {
+		color = RED;
+	} else {
+		color = LIGHTGREY;
+	}
+	ILI9341_Draw_Text_Space("DOVC", 110, 160, color, Font_26_B, WHITE, 25);
+
+	if (jk_bms_battery_info.battery_alarms.battery_over_temperature) {
+		color = RED;
+	} else {
+		color = LIGHTGREY;
+	}
+	ILI9341_Draw_Text_Space("BOVT", 215, 160, color, Font_26_B, WHITE, 25);
+
+}
+
+void updateLCD() {
+	taskENTER_CRITICAL();
+	drawBattery(jk_bms_battery_info.battery_status.battery_soc);
+	drawVoltage_Current();
+
+	ILI9341_Draw_Filled_Rectangle_Coord(310, 5, 315, 150, RED);
+
+	if (lcd_temp != (jk_bms_battery_info.battery_status.sensor_temperature_1 + jk_bms_battery_info.battery_status.sensor_temperature_2)) {
+		drawTemperature();
+		lcd_temp = jk_bms_battery_info.battery_status.sensor_temperature_1 + jk_bms_battery_info.battery_status.sensor_temperature_2;
+	}
+
+	if (lcd_alarms != jk_bms_battery_info.battery_alarms.alarm_data) {
+		lcd_alarms = jk_bms_battery_info.battery_alarms.alarm_data;
+		drawAlarms();
+	}
+	taskEXIT_CRITICAL();
 }
 
 /* USER CODE END 4 */
@@ -547,7 +641,7 @@ void startGetBMSDataTask(void *argument)
 	/* Infinite loop */
   for(;;)
   {
-	  if (dataReady == 1) {
+	  if (dataReady == 5) {
 		  updateLCD();
 		  dataReady = 0;
 	  }
@@ -555,7 +649,7 @@ void startGetBMSDataTask(void *argument)
 		  UART_Rx_Size = 0;
 		  HAL_UARTEx_ReceiveToIdle_IT(&huart1, UART_Rx_Buffer, 350);
 		  Request_JK_Battery_485_Status_Frame(huart1);
-		  //HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
+		  HAL_GPIO_TogglePin(LED_D2_GPIO_Port, LED_D2_Pin); //Toggle the state of pin
 	  }
 
 	  osDelay(1000);
@@ -593,7 +687,7 @@ void startEvery10msTask(void *argument)
 		  }
 		  Tx_JK_BMS_Status_via_CAN(hcan1);
 		  UART_Rx_Current_Size = 0;
-		  dataReady = 1;
+		  dataReady += 1;
 	  }
 	  osDelay(100);
   }
